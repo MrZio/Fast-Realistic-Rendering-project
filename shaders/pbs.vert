@@ -18,6 +18,6 @@ out vec2 fragTexCoord;
 void main(void)  {
     gl_Position = projection* view* model * vec4(vert, 1.0);
     fragNormal = normalize(normal_matrix * normal );
-    fragPos = vec3(model * vec4(vert, 1.0));
+    fragPos = vec3(model * vec4(vert, 1.0)); //perchè in world space, no view
     fragTexCoord = texCoord;
 }

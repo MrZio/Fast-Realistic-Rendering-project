@@ -2,12 +2,12 @@
 
 in vec2 fragTextCoord;
 
-// Le tre texture in arrivo dal C++ (Canali 3, 4 e 5)
+
 uniform sampler2D color_map;
 uniform sampler2D roughness_map;
 uniform sampler2D metalness_map;
 
-// La variabile dal menu a tendina (0 = Color, 1 = Roughness, 2 = Metalness)
+
 uniform int current_texture;
 
 out vec4 frag_color;
