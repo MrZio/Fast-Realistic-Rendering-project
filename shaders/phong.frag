@@ -1,8 +1,8 @@
 #version 330
 
-// Parametri in ingresso dal C++
+
 uniform vec3 light;
-uniform mat4 view; // Aggiungiamo la matrice view per trovare la telecamera!
+uniform mat4 view; // matrice view per trovare la telecamera
 
 out vec4 frag_color;
 
@@ -36,7 +36,7 @@ void main (void) {
 
     // In GLSL la funzione reflect richiede il vettore incidente (dalla luce verso il punto),
     // quindi usiamo -lightDir.
-    vec3 reflectDir = reflect(-lightDir, norm); // Vettore R (Riflesso)
+    vec3 reflectDir = reflect(-lightDir, norm); // Vettore Riflesso
 
     // Calcolo (R dot V)^s
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
