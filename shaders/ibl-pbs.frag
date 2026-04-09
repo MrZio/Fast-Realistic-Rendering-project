@@ -9,21 +9,20 @@ out vec4 frag_color;
 const float MAX_REFLECTION_LOD = 4.0;
 uniform mat4 view;
 
-// IBL Maps
-uniform samplerCube irradiance_map;
-uniform samplerCube prefilter_map;
-uniform sampler2D   brdf_lut;
+// --- IBL Maps (Nomi esatti che invia il tuo C++) ---
+uniform samplerCube diffuse_map;   // Questa è l'irradianza (luce diffusa)
+uniform samplerCube specular_map;  // Questo è il cielo prefiltrato (mipmap)
 
-// Parametri C++
+// --- Parametri C++ ---
 uniform vec3  light;      // Posizione della luce in WORLD space
 uniform vec3  fresnel;    // Slider UI
 uniform float roughness;  // Slider UI per la ruvidità globale
 uniform float metalness;  // Slider UI per la metallicità globale
 
 // L'interruttore del C++: 0 = Slider GUI, 1 = Texture
-uniform int use_texture;
+uniform int current_texture; // RINOMINATO PER COMBACIARE COL C++
 
-// Texture del materiale
+// --- Texture del materiale ---
 uniform sampler2D color_map;
 uniform sampler2D roughness_map;
 uniform sampler2D metalness_map;
@@ -38,7 +37,7 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 
 float GeometrySchlickGGX(float NdotX, float rough) {
     float r = rough + 1.0;
-    float k = (r * r) / 8.0; // Valido per luci analitiche (Point/Directional)
+    float k = (r * r) / 8.0;
     return NdotX / max(NdotX * (1.0 - k) + k, 1e-7);
 }
 
@@ -60,103 +59,88 @@ float DistributionGGX(vec3 N, vec3 H, float rough) {
 void main(void) {
     // 1. COSTRUZIONE DEI VETTORI IN VIEW SPACE
     vec3 N = normalize(fragNormal);
-
-    // In View Space, la telecamera è all'origine (0,0,0)
     vec3 V = normalize(-fragPos);
 
-    // Convertiamo la posizione della luce da World Space a View Space
     vec3 lightPosView = vec3(view * vec4(light, 1.0));
-    vec3 L = normalize(lightPosView - fragPos); // Faretto (Point Light)
-
+    vec3 L = normalize(lightPosView - fragPos);
     vec3 H = normalize(V + L);
 
     float NdotL = max(dot(N, L), 0.0);
     float VdotH = max(dot(V, H), 0.0);
 
-    // 2. LOGICA DEI MATERIALI (Bivio UI vs Texture)
+    // 2. LOGICA DEI MATERIALI
     vec3 albedo;
     float rough;
     float metal;
 
-    if (use_texture == 1) {
+    if (current_texture == 1) {
         // MODALITÀ TEXTURE
         albedo = texture(color_map, fragTexCoord).rgb;
-        albedo = pow(albedo, vec3(2.2)); // De-gamma: Spazio Lineare per la corretta fisica
-
+        albedo = pow(albedo, vec3(2.2)); // De-gamma: Spazio Lineare
         rough  = texture(roughness_map, fragTexCoord).r;
         metal  = texture(metalness_map, fragTexCoord).r;
     } else {
         // MODALITÀ GUI
-        albedo = vec3(0.8, 0.2, 0.2); // Rosso fisso per testare correttamente i dielettrici
+        albedo = vec3(0.8, 0.2, 0.2);
         rough  = roughness;
         metal  = metalness;
     }
 
-    // Clamp minimo per la roughness (evita artefatti e divisioni per zero)
     float roughClamped = max(rough, 0.05);
-
-    // 3. RIFLETTANZA DI BASE (F0)
-    // 0.04 per i dielettrici, colore base (albedo) per i metalli
     vec3 F0 = mix(vec3(0.04), albedo, metal);
 
     // 4. EQUAZIONE DI COOK-TORRANCE (Illuminazione Diretta)
-        vec3 Lo = vec3(0.0); // Di base, nessuna luce diretta
+    vec3 Lo = vec3(0.0);
 
-        // Calcoliamo la luce diretta SOLO se il pixel "vede" il faretto
-        if (NdotL > 0.0) {
-            vec3  F = fresnelSchlick(VdotH, F0);
-            float D = DistributionGGX(N, H, roughClamped);
-            float G = GeometrySmith(N, V, L, roughClamped);
+    if (NdotL > 0.0) {
+        vec3  F = fresnelSchlick(VdotH, F0);
+        float D = DistributionGGX(N, H, roughClamped);
+        float G = GeometrySmith(N, V, L, roughClamped);
 
-            // Denominatore protetto
-            float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL;
-            vec3 specular = (D * G * F) / max(denominator, 0.001);
+        float denominator = 4.0 * max(dot(N, V), 0.0) * NdotL;
+        vec3 specular = (D * G * F) / max(denominator, 0.001);
 
-            vec3 kS = F;
-            vec3 kD = (vec3(1.0) - kS) * (1.0 - metal);
+        vec3 kS = F;
+        vec3 kD = (vec3(1.0) - kS) * (1.0 - metal);
 
-            // Aggiungiamo l'energia alla luce in uscita (Lo)
-            vec3 radiance = vec3(0.0) * 10.0; // Intensità faretto
-            Lo = (kD * albedo / PI + specular) * radiance * NdotL;
-        }
-        // -------------------------------------------------------------------------
-            // 5. IMAGE-BASED LIGHTING (Illuminazione Indiretta Ambientale)
-            // -------------------------------------------------------------------------
+        vec3 radiance = vec3(1.0) * 10.0;
+        Lo = (kD * albedo / PI + specular) * radiance * NdotL;
+    }
 
-            // Calcoliamo il Fresnel specifico per l'ambiente (basato sull'angolo di vista NdotV, non sulla lampadina)
-            vec3 F_ambient = fresnelSchlick(max(dot(N, V), 0.0), F0);
-            vec3 kS_ambient = F_ambient;
-            // L'energia che non viene riflessa (kS) viene assorbita per la diffusione (kD)
-            vec3 kD_ambient = (vec3(1.0) - kS_ambient) * (1.0 - metal);
+    // -------------------------------------------------------------------------
+    // 5. IMAGE-BASED LIGHTING (Illuminazione Indiretta Ambientale)
+    // -------------------------------------------------------------------------
 
-            // 5.1 IBL Diffuso (Irradianza)
-            vec3 worldNormal = normalize(mat3(inverse(view)) * N);
-            vec3 irradiance = texture(irradiance_map, worldNormal).rgb;
-            // Usiamo il nostro nuovo kD ambientale!
-            vec3 ambient_diffuse = kD_ambient * irradiance * albedo;
+    vec3 F_ambient = fresnelSchlick(max(dot(N, V), 0.0), F0);
+    vec3 kS_ambient = F_ambient;
+    vec3 kD_ambient = (vec3(1.0) - kS_ambient) * (1.0 - metal);
 
-            // 5.2 IBL Speculare (Prefilter + BRDF LUT)
-            // Calcoliamo il vettore di riflessione in View Space e lo portiamo in World Space
-            vec3 R = reflect(-V, N);
-            vec3 worldR = normalize(mat3(inverse(view)) * R);
+    // 5.1 IBL Diffuso (Irradianza)
+    vec3 worldNormal = normalize(mat3(inverse(view)) * N);
+    vec3 irradiance = texture(diffuse_map, worldNormal).rgb;
+    vec3 ambient_diffuse = kD_ambient * irradiance * albedo;
 
-            // Leggiamo il cielo sfocato in base alla rugosità
-            vec3 prefilteredColor = textureLod(prefilter_map, worldR, roughClamped * MAX_REFLECTION_LOD).rgb;
+    // 5.2 IBL Speculare (Prefilter + BRDF Matematica)
+    vec3 R = reflect(-V, N);
+    vec3 worldR = normalize(mat3(inverse(view)) * R);
+    vec3 prefilteredColor = textureLod(specular_map, worldR, roughClamped * MAX_REFLECTION_LOD).rgb;
 
-            // Leggiamo la BRDF LUT usando NdotV e la rugosità
-            vec2 envBRDF = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughClamped)).rg;
+    // Integrazione BRDF Analitica (Sostituisce la texture brdf_lut)
+    float NdotV_clamped = max(dot(N, V), 0.0);
+    vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
+    vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
+    vec4 r = roughClamped * c0 + c1;
+    float a004 = min(r.x * r.x, exp2(-9.28 * NdotV_clamped)) * r.x + r.y;
+    vec2 envBRDF = vec2(-1.04, 1.04) * a004 + r.zw;
 
-            // Split-Sum Approximation per lo speculare ambientale
-            vec3 ambient_specular = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
+    // Split-Sum Approximation
+    vec3 ambient_specular = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
 
-            // 5.3 Ambiente Totale
-            vec3 ambient = ambient_diffuse + ambient_specular;
-            // -------------------------------------------------------------------------
+    // 5.3 Ambiente Totale
+    vec3 ambient = ambient_diffuse + ambient_specular;
+    // -------------------------------------------------------------------------
 
     // 6. ILLUMINAZIONE FINALE E GAMMA CORRECTION
-    vec3 radiance = vec3(1.0) * 10.0; // Intensità faretto
-
-    // Sommiamo la luce ambientale continua con la luce diretta del faretto
     vec3 color = ambient + Lo;
 
     // Ritorno allo spazio sRGB per il monitor
