@@ -70,7 +70,7 @@ bool LoadCubeMap(const QString &dir) {
 
   if (res) {
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
@@ -262,6 +262,7 @@ bool GLWidget::LoadModel(const QString &filename) {
 bool GLWidget::LoadSpecularMap(const QString &dir) {
   glBindTexture(GL_TEXTURE_CUBE_MAP, specular_map_);
   bool res = LoadCubeMap(dir);
+  glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
   glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
   update();
   return res;
@@ -367,6 +368,11 @@ void GLWidget::initializeGL ()
   if (!res) exit(0);
 
   LoadModel(".null");//create an sphere
+  // Carica la skybox originale nitida
+  LoadSpecularMap("percorso/della/skybox/originale/humus");
+
+  // NUOVA MAPPA DIFFUSA
+  LoadDiffuseMap("percorso/della/cartella/diffuse_irradiance_map");
 
   initialized_ = true;
 }
@@ -511,6 +517,17 @@ void GLWidget::paintGL ()
             glBindTexture(GL_TEXTURE_2D, metalness_map_);
             glUniform1i(metalness_map_location,5);
 
+            //----------------
+            //glActiveTexture(GL_TEXTURE0);
+            //glBindTexture(GL_TEXTURE_CUBE_MAP, specular_map_);
+
+            // Cambiamo il filtro: da "LINEAR" (solo nitido) a "MIPMAP" (permette la sfocatura)
+            //glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
+            // Generiamo i livelli di sfocatura (i Mipmap) al volo!
+            //glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+            // --- FINE FIX ---
+
             //TODO END
 
             glUniform1i(current_text_location, currentTexture_);
@@ -522,6 +539,7 @@ void GLWidget::paintGL ()
 
             // TODO(students): Implement draw call of the mesh
             glBindVertexArray(VAO);
+            glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
             glDrawElements(GL_TRIANGLES, mesh_->faces_.size(), GL_UNSIGNED_INT,(GLvoid*) 0);
             glBindVertexArray(0);
 

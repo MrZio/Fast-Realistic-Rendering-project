@@ -1,0 +1,10 @@
+../../release/baker_main.o
+../../release/triangle_mesh.o
+../../release/mesh_io.o
+../../release/main.o
+../../release/main_window.o
+../../release/glwidget.o
+../../release/camera.o
+../../release/tiny_obj_loader.o
+../../release/moc_main_window.o
+../../release/moc_glwidget.o

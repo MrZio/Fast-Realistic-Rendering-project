@@ -10,11 +10,10 @@ uniform mat4 view;
 
 // --- Parametri C++ ---
 uniform vec3  light;      // Posizione della luce in WORLD space
-uniform vec3  fresnel;    // Slider UI
+uniform vec3 fresnel;
 uniform float roughness;  // Slider UI per la ruvidità globale
 uniform float metalness;  // Slider UI per la metallicità globale
 
-// IL FIX CRITICO: Rinominato per combaciare perfettamente con il glwidget.cc
 uniform int current_texture;
 
 // --- Texture del materiale ---
@@ -82,7 +81,7 @@ void main(void) {
     }
 
     float roughClamped = max(rough, 0.05);
-    vec3 F0 = mix(vec3(0.04), albedo, metal);
+    vec3 F0 = mix(fresnel, albedo, metal);
 
     // 4. EQUAZIONE DI COOK-TORRANCE (Illuminazione Diretta)
     vec3 Lo = vec3(0.0);
@@ -99,7 +98,7 @@ void main(void) {
         vec3 kS = F;
         vec3 kD = (vec3(1.0) - kS) * (1.0 - metal);
 
-        vec3 radiance = vec3(1.0) * 10.0;
+        vec3 radiance = vec3(0.1) * 10.0;
         Lo = (kD * albedo / PI + specular) * radiance * NdotL;
     }
 

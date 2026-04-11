@@ -1,26 +1,26 @@
 #version 330
 
-in vec3 fragPos;      // Passato dal Vertex Shader in VIEW space
-in vec3 fragNormal;   // Passato dal Vertex Shader in VIEW space
+in vec3 fragPos;      //  in VIEW space
+in vec3 fragNormal;   //  in VIEW space
 in vec2 fragTexCoord;
 
 out vec4 frag_color;
 
-const float MAX_REFLECTION_LOD = 4.0;
+const float MAX_REFLECTION_LOD = 9.0;
 uniform mat4 view;
 
-// --- IBL Maps (Nomi esatti che invia il tuo C++) ---
+// --- IBL Maps ---
 uniform samplerCube diffuse_map;   // Questa è l'irradianza (luce diffusa)
 uniform samplerCube specular_map;  // Questo è il cielo prefiltrato (mipmap)
 
 // --- Parametri C++ ---
 uniform vec3  light;      // Posizione della luce in WORLD space
-uniform vec3  fresnel;    // Slider UI
+uniform vec3 fresnel;
 uniform float roughness;  // Slider UI per la ruvidità globale
 uniform float metalness;  // Slider UI per la metallicità globale
 
 // L'interruttore del C++: 0 = Slider GUI, 1 = Texture
-uniform int current_texture; // RINOMINATO PER COMBACIARE COL C++
+uniform int current_texture; // rinominato
 
 // --- Texture del materiale ---
 uniform sampler2D color_map;
@@ -33,6 +33,13 @@ const float PI = 3.14159265359;
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float rough) {
+    // Calcoliamo il limite massimo di riflessione basato sulla ruvidità
+    vec3 maxReflection = max(vec3(1.0 - rough), F0);
+
+    return F0 + (maxReflection - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 float GeometrySchlickGGX(float NdotX, float rough) {
@@ -54,7 +61,7 @@ float DistributionGGX(vec3 N, vec3 H, float rough) {
     return a2 / max(PI * denom * denom, 1e-7);
 }
 
-// --- PROGRAMMA PRINCIPALE ---
+// --main---
 
 void main(void) {
     // 1. COSTRUZIONE DEI VETTORI IN VIEW SPACE
@@ -87,7 +94,7 @@ void main(void) {
     }
 
     float roughClamped = max(rough, 0.05);
-    vec3 F0 = mix(vec3(0.04), albedo, metal);
+    vec3 F0 = mix(fresnel, albedo, metal);
 
     // 4. EQUAZIONE DI COOK-TORRANCE (Illuminazione Diretta)
     vec3 Lo = vec3(0.0);
@@ -103,15 +110,15 @@ void main(void) {
         vec3 kS = F;
         vec3 kD = (vec3(1.0) - kS) * (1.0 - metal);
 
-        vec3 radiance = vec3(1.0) * 10.0;
+        vec3 radiance = vec3(0.0) * 10.0;
         Lo = (kD * albedo / PI + specular) * radiance * NdotL;
     }
 
     // -------------------------------------------------------------------------
-    // 5. IMAGE-BASED LIGHTING (Illuminazione Indiretta Ambientale)
+    // 5. IMAGE-BASED LIGHTING
     // -------------------------------------------------------------------------
 
-    vec3 F_ambient = fresnelSchlick(max(dot(N, V), 0.0), F0);
+    vec3 F_ambient = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughClamped);
     vec3 kS_ambient = F_ambient;
     vec3 kD_ambient = (vec3(1.0) - kS_ambient) * (1.0 - metal);
 
@@ -125,7 +132,7 @@ void main(void) {
     vec3 worldR = normalize(mat3(inverse(view)) * R);
     vec3 prefilteredColor = textureLod(specular_map, worldR, roughClamped * MAX_REFLECTION_LOD).rgb;
 
-    // Integrazione BRDF Analitica (Sostituisce la texture brdf_lut)
+    // Integrazione BRDF Analitica, calcolo manuale
     float NdotV_clamped = max(dot(N, V), 0.0);
     vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
     vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
